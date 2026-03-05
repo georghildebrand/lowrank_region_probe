@@ -10,7 +10,7 @@ from models.mlp import MLP
 from datasets.synthetic_polytopes import generate_synthetic_polytopes
 from datasets.circle_dataset import generate_circle_dataset
 from probes.lowrank_ensemble import generate_perturbation_ensemble
-from probes.stability_metrics import compute_point_stability, compute_region_stability
+from probes.stability_metrics import compute_point_stability, compute_region_stability, compute_boundary_stability
 from analysis.region_extraction import extract_regions
 
 def train_model(model, X, y, steps=3000):
@@ -65,6 +65,11 @@ def run_experiment():
         print("Computing stability metrics...")
         point_stability = compute_point_stability(model, ensemble, X)
         
+        # 5b. Compute Boundary Stability
+        print("Evaluating boundary sensitivity...")
+        boundary_threshold = 0.05
+        boundary_stab, boundary_idx = compute_boundary_stability(model, ensemble, X, threshold=boundary_threshold)
+        
         # 6. Extract Regions and Mass
         regions = extract_regions(model, X)
         
@@ -75,7 +80,9 @@ def run_experiment():
             "region_mass": [r["mass"] for r in regions],
             "region_stability": [region_stabilities_map[r["region_id"]] for r in regions],
             "point_stability": point_stability.tolist(),
-            "X": X.tolist() # Only need this once really, but fine
+            "boundary_stability": boundary_stab.tolist(),
+            "boundary_indices": boundary_idx.tolist(),
+            "X": X.tolist()
         }
         
     # Save combined results
@@ -93,11 +100,24 @@ def run_experiment():
         ps = np.array(all_results[mode]["point_stability"])
         sc = axes[i].scatter(X[:, 0], X[:, 1], c=ps, cmap='viridis', s=1)
         fig.colorbar(sc, ax=axes[i], label='Stability')
-        axes[i].set_title(f'Point Stability ({mode})')
+        axes[i].set_title(f'Global Point Stability ({mode})')
     plt.tight_layout()
     plt.savefig('results/figures/stability_heatmap_comp.png')
     plt.close()
     
+    # Boundary Stability Heatmaps
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    for i, mode in enumerate(modes):
+        b_idx = np.array(all_results[mode]["boundary_indices"])
+        b_stab = np.array(all_results[mode]["boundary_stability"])
+        if len(b_idx) > 0:
+            sc = axes[i].scatter(X[b_idx, 0], X[b_idx, 1], c=b_stab, cmap='magma', s=2)
+            fig.colorbar(sc, ax=axes[i], label='Stability')
+        axes[i].set_title(f'Boundary Stability ({mode})\nthresh={boundary_threshold}')
+    plt.tight_layout()
+    plt.savefig('results/figures/boundary_stability_comp.png')
+    plt.close()
+
     # Region Stability Histograms
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     for i, mode in enumerate(modes):
