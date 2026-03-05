@@ -42,21 +42,33 @@ def compute_boundary_sensitivity(point_stability):
 
 def identify_boundary_points(model, X, threshold=0.1):
     """
-    Selects points where distance to nearest hyperplane < threshold.
-    distance_j = |w_j·x + b_j| / ||w_j||
+    Selects points where distance to nearest ACTIVE hyperplane < threshold.
+    Active hyperplanes are those associated with neurons that change sign 
+    across the dataset X.
     """
     with torch.no_grad():
         W = model.fc1.weight # [hidden, input]
         b = model.fc1.bias   # [hidden]
         
-        # Pre-activations: z = X @ W.T + b  -> [N, hidden]
-        z = X @ W.T + b
+        # 1. Identify Active Hyperplanes
+        # Pre-activations for all points: [N, hidden]
+        z_all = X @ W.T + b
+        gates = (z_all > 0)
         
-        # Normalization factor: ||w_j||
-        norms = torch.norm(W, dim=1) # [hidden]
+        # A neuron is active if it is not always 0 AND not always 1
+        is_active = (gates.any(dim=0) & (~gates.all(dim=0)))
+        active_indices = torch.where(is_active)[0]
         
-        # Geometric distances to all hyperplanes
-        distances = torch.abs(z) / (norms + 1e-12) # [N, hidden]
+        if len(active_indices) == 0:
+            return torch.tensor([], dtype=torch.long), torch.zeros(X.shape[0])
+            
+        W_active = W[active_indices]
+        b_active = b[active_indices]
+        z_active = z_all[:, active_indices]
+        
+        # 2. Geometric distances to active hyperplanes
+        norms = torch.norm(W_active, dim=1) # [num_active]
+        distances = torch.abs(z_active) / (norms + 1e-12) # [N, num_active]
         
         # distance_i = min_j distance_{i,j}
         min_distances, _ = torch.min(distances, dim=1) # [N]

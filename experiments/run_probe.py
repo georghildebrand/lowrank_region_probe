@@ -70,8 +70,8 @@ def run_experiment():
         boundary_threshold = 0.05
         boundary_stab, boundary_idx = compute_boundary_stability(model, ensemble, X, threshold=boundary_threshold)
         
-        # 6. Extract Regions and Mass
-        regions = extract_regions(model, X)
+        # 6. Extract Regions and Mass (passing cell_ids for purity)
+        regions = extract_regions(model, X, cell_ids=cell_ids)
         
         # 7. Compute Region Stability
         region_stabilities_map = compute_region_stability(model, ensemble, X, point_stability)
@@ -79,6 +79,7 @@ def run_experiment():
         all_results[mode] = {
             "region_mass": [r["mass"] for r in regions],
             "region_stability": [region_stabilities_map[r["region_id"]] for r in regions],
+            "region_purity": [r.get("purity", 0.0) for r in regions],
             "point_stability": point_stability.tolist(),
             "boundary_stability": boundary_stab.tolist(),
             "boundary_indices": boundary_idx.tolist(),
@@ -140,6 +141,18 @@ def run_experiment():
         axes[i].grid(True, which="both", ls="-", alpha=0.2)
     plt.tight_layout()
     plt.savefig('results/figures/mass_vs_stability_comp.png')
+    plt.close()
+
+    # Purity vs Stability Scatter (Validation Check)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    for i, mode in enumerate(modes):
+        axes[i].scatter(all_results[mode]["region_stability"], all_results[mode]["region_purity"], alpha=0.5, color='orange')
+        axes[i].set_title(f'Stability vs Purity ({mode})')
+        axes[i].set_xlabel('Stability')
+        axes[i].set_ylabel('Purity (Dominant Cell Frac)')
+        axes[i].grid(True, ls="-", alpha=0.2)
+    plt.tight_layout()
+    plt.savefig('results/figures/purity_vs_stability_comp.png')
     plt.close()
     
     print("Comparison figures saved to results/figures/")
