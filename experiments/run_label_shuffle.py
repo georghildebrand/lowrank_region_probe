@@ -19,13 +19,13 @@ import numpy as np
 import json
 import os
 import matplotlib.pyplot as plt
-from scipy.stats import spearmanr
 
 from models.mlp import MLP
 from datasets.synthetic_polytopes import generate_synthetic_polytopes
 from cells.ensemble import generate_perturbation_ensemble
 from probes.stability_metrics import compute_point_exact_stability
 from controls.baselines import get_label_shuffle_data
+from analysis.conditioning import min_hyperplane_distance, partial_spearman_mode_given_distance
 
 SEEDS = [0, 1, 2, 3, 4]
 SCALES = [0.02, 0.05, 0.1]
@@ -48,25 +48,6 @@ def train_model(model, X, y, steps):
     return model
 
 
-def min_hyperplane_distance(model, X):
-    with torch.no_grad():
-        W = model.fc1.weight
-        b = model.fc1.bias
-        z = X @ W.T + b
-        norms = torch.norm(W, dim=1)
-        return torch.min(torch.abs(z) / (norms + 1e-12), dim=1)[0]
-
-
-def partial_spearman_mode_given_distance(s_low, s_full, dist):
-    y = np.concatenate([s_low, s_full])
-    m = np.concatenate([np.ones_like(s_low), np.zeros_like(s_full)])
-    d = np.concatenate([dist, dist])
-    rho_ym = spearmanr(y, m)[0]
-    rho_yd = spearmanr(y, d)[0]
-    denom = np.sqrt(max(1.0 - rho_yd ** 2, 1e-9))
-    return rho_ym / denom
-
-
 def decile_delta(s_low, s_full, dist, n=10):
     delta = s_low - s_full
     edges = np.quantile(dist, np.linspace(0, 1, n + 1))
@@ -79,7 +60,7 @@ def decile_delta(s_low, s_full, dist, n=10):
 
 
 def eval_model(model, X, scale, seed_offset):
-    dist = min_hyperplane_distance(model, X).cpu().numpy()
+    dist = min_hyperplane_distance(model.fc1.weight, model.fc1.bias, X).cpu().numpy()
     data_centroid = X.mean(dim=0)
     stab = {}
     for mode in ["lowrank", "fullrank"]:

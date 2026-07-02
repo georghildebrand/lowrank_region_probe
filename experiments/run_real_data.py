@@ -15,7 +15,7 @@ import os
 import matplotlib.pyplot as plt
 
 from models.deep_mlp import DeepMLP
-from datasets.image_binary import load_binary_dataset, SPLITS
+from datasets.image_binary import load_binary_dataset
 from probes.layer_stability import evaluate_layer_stability
 from analysis.conditioning import partial_spearman_mode_given_distance
 
