@@ -15,9 +15,15 @@ def min_hyperplane_distance(W, b, X):
 def partial_spearman_mode_given_distance(s_a, s_b, dist):
     """Partial Spearman rho(stability, mode | distance), paired sample.
 
-    Distances identical across modes so rho(mode, dist)=0 and the partial
-    reduces to rho_ym / sqrt(1 - rho_yd^2). NaN entries (from region-identity
-    min_mass filtering) are dropped pairwise.
+    ``dist`` must be the **shared** distance array covering the same spatial
+    points for both modes — i.e. the same values are used for the s_a half and
+    the s_b half of the concatenated sample.  This shared-distance contract is
+    what makes rho(mode, dist) = 0 by construction, reducing the full partial-
+    correlation formula to the simpler ``rho_ym / sqrt(1 - rho_yd^2)``.
+    Passing per-mode distance arrays (where the two halves differ) would
+    violate this assumption and silently produce wrong results.
+
+    NaN entries (from region-identity min_mass filtering) are dropped pairwise.
     """
     s_a, s_b, dist = np.asarray(s_a, float), np.asarray(s_b, float), np.asarray(dist, float)
     valid = ~(np.isnan(s_a) | np.isnan(s_b) | np.isnan(dist))
