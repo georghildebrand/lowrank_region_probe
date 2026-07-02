@@ -14,8 +14,17 @@ from cells.regions import gate_patterns, hash_patterns, extract_cells
 from probes.stability_metrics import compute_point_hamming_stability, compute_point_exact_stability, identify_boundary_points
 from cells.stability import compute_cell_stability_summaries
 from cells.adjacency import compute_cell_adjacency, get_cell_degrees
-from cells.select import score_structural_cells, select_top_cells
-from controls.baselines import get_random_network_baseline
+from cells.select import score_structural_cells
+
+def create_random_model(input_dim, hidden_dim, seed=42):
+    model = MLP(input_dim=input_dim, hidden_dim=hidden_dim)
+    # Local generator: reproducible baseline without resetting the global RNG
+    # (a mid-run torch.manual_seed would couple all downstream ensemble draws)
+    gen = torch.Generator().manual_seed(seed)
+    with torch.no_grad():
+        for p in model.parameters():
+            p.normal_(mean=0.0, std=1.0, generator=gen)
+    return model
 
 def train_model(model, X, y, steps=3000):
     criterion = nn.BCEWithLogitsLoss()
@@ -27,23 +36,36 @@ def train_model(model, X, y, steps=3000):
         optimizer.step()
     return model
 
-def run_pipeline(model, X, y, cell_ids, config, label="main"):
-    print(f"\n--- Running Pipeline: {label} ---")
-    
+def evaluate_model(model, X, cell_ids, config):
     # 1. Base Region Extraction
     patterns = gate_patterns(model, X)
     pattern_hash = hash_patterns(patterns)
     cell_mapping, cells = extract_cells(X, pattern_hash, min_mass=config["min_mass"])
-    print(f"Extracted {len(cells)} cells (min_mass={config['min_mass']})")
-    
-    # 2. Ensemble & Stability
+
+    # 2. Distance to nearest hyperplane (Step 11)
+    # NOTE: min over ALL hyperplanes — intentionally broader than the boundary
+    # band below, which uses config["boundary_mode"] (e.g. locally_active)
+    with torch.no_grad():
+        W = model.fc1.weight  # [hidden, input]
+        b = model.fc1.bias    # [hidden]
+        activations = torch.matmul(X, W.t()) + b  # [N, hidden]
+        # Geometric distance: |w.x + b| / ||w||
+        norms = torch.norm(W, dim=1)
+        distances = torch.abs(activations) / norms
+        min_distances = torch.min(distances, dim=1)[0]
+
+    # 3. Base-model-only quantities (mode-independent)
+    bound_idx, _ = identify_boundary_points(model, X, threshold=config["boundary_threshold"], boundary_mode=config["boundary_mode"])
+    edges = compute_cell_adjacency(X.cpu().numpy(), cell_mapping, k=16)
+    degrees = get_cell_degrees(cells, edges)
+
+    # 4. Ensemble & Stability
     modes = ["lowrank", "fullrank"]
     results_by_mode = {}
-    
+
     data_centroid = X.mean(dim=0)
-    
+
     for mode in modes:
-        print(f"Mode: {mode}")
         ens_config = {
             "mode": mode,
             "rank": config["rank"],
@@ -54,42 +76,52 @@ def run_pipeline(model, X, y, cell_ids, config, label="main"):
         ensemble = generate_perturbation_ensemble(model, ensemble_size=config["ensemble_size"], perturbation_config=ens_config)
         
         # Point stability
-        s_ham = compute_point_hamming_stability(model, ensemble, X)
         s_exact = compute_point_exact_stability(model, ensemble, X)
-        
-        # Boundary band
-        bound_idx, _ = identify_boundary_points(model, X, threshold=config["boundary_threshold"], boundary_mode=config["boundary_mode"])
-        
+        s_ham = compute_point_hamming_stability(model, ensemble, X)
+
         # Cell stability
         summaries = compute_cell_stability_summaries(cells, s_exact, s_ham, boundary_indices=bound_idx)
-        
-        # Adjacency
-        edges = compute_cell_adjacency(X.cpu().numpy(), cell_mapping, k=16)
-        degrees = get_cell_degrees(cells, edges)
-        
-        # Structural Selection
-        for s in summaries: s["degree"] = degrees.get(s["cell_index"], 0)
-        scored = score_structural_cells(summaries)
-        top_cells = select_top_cells(scored, top_k=20)
-        
-        # Purity check if labels available
-        if cell_ids is not None:
-            for s in scored:
-                m_idx = cells[s["cell_index"]]["member_indices"]
+
+        # Structural Selection & Stats
+        for s in summaries:
+            s["degree"] = degrees.get(s["cell_index"], 0)
+            # Purity check
+            m_idx = cells[s["cell_index"]]["member_indices"]
+            if cell_ids is not None:
                 c_vals = cell_ids[m_idx]
                 counts = torch.bincount(c_vals)
                 s["purity"] = counts.max().item() / s["mass"]
+            
+            # Boundary stability specifically
+            # (Already handles inside compute_cell_stability_summaries as boundary_exact_mean)
+        
+        scored = score_structural_cells(summaries)
+        
+        # Global metrics for this mode
+        mean_s = s_exact.mean().item()
+        # None (not 0.0) when no boundary points — matches cell-level convention
+        boundary_s = s_exact[bound_idx].mean().item() if len(bound_idx) > 0 else None
+        
+        # Step 11: corr(stability, distance)
+        corr_dist_stab, _ = spearmanr(min_distances.cpu().numpy(), s_exact.cpu().numpy())
         
         results_by_mode[mode] = {
             "summaries": scored,
-            "top_cells": top_cells,
+            "mean_exact_stability": mean_s,
+            "boundary_exact_stability": boundary_s,
+            "dist_stab_corr": corr_dist_stab,
             "point_exact_stability": s_exact.tolist(),
-            "boundary_indices": bound_idx.tolist()
+            "min_distances": min_distances.tolist(),
+            "n_cells": len(cells)
         }
     
-    return results_by_mode, cells
+    return results_by_mode
 
 def main():
+    # Global seeds: dataset, training, ensemble draws all reproducible
+    torch.manual_seed(0)
+    np.random.seed(0)
+
     config = {
         "input_dim": 2,
         "hidden_dim": 64,
@@ -111,48 +143,79 @@ def main():
     X, y, cell_ids = generate_synthetic_polytopes(n_samples=config["dataset_size"], dim=config["input_dim"])
     
     # Main Model
-    model = MLP(input_dim=config["input_dim"], hidden_dim=config["hidden_dim"])
     print("Training main model...")
-    train_model(model, X, y, steps=config["train_steps"])
+    trained_model = MLP(input_dim=config["input_dim"], hidden_dim=config["hidden_dim"])
+    train_model(trained_model, X, y, steps=config["train_steps"])
     
-    main_results, cells = run_pipeline(model, X, y, cell_ids, config, label="Trained Model")
+    print("Creating random model...")
+    random_model = create_random_model(config["input_dim"], config["hidden_dim"])
     
-    # Control: Random Network
-    rand_model = get_random_network_baseline(config["input_dim"], config["hidden_dim"])
-    rand_results, _ = run_pipeline(rand_model, X, y, cell_ids, config, label="Random Control")
+    print("Evaluating trained model...")
+    trained_results = evaluate_model(trained_model, X, cell_ids, config)
+
+    print("Evaluating random model...")
+    random_results = evaluate_model(random_model, X, cell_ids, config)
     
     # Save Output
     output = {
         "config": config,
-        "main_results": {m: {k: v for k, v in r.items() if "point" not in k} for m, r in main_results.items()},
-        "control_results": {m: {k: v for k, v in r.items() if "point" not in k} for m, r in rand_results.items()}
+        "trained_model": {m: {k: v for k, v in r.items() if "point" not in k and "min_distances" not in k} for m, r in trained_results.items()},
+        "random_model": {m: {k: v for k, v in r.items() if "point" not in k and "min_distances" not in k} for m, r in random_results.items()}
     }
     with open("results/logs/structural_cells.json", "w") as f:
-        json.dump(output, f)
-        
-    print("\n--- Summary ---")
-    for mode in ["lowrank", "fullrank"]:
-        res = main_results[mode]["summaries"]
-        masses = [s["mass"] for s in res]
-        stabs = [s["exact_mean"] for s in res]
-        purities = [s["purity"] for s in res if "purity" in s]
-        
-        corr_m, _ = spearmanr(masses, stabs)
-        corr_p = spearmanr(purities, stabs)[0] if purities else 0
-        
-        print(f"Mode {mode}: Cells={len(res)}, Corr(Mass, Stab)={corr_m:.3f}, Corr(Purity, Stab)={corr_p:.3f}")
+        json.dump(output, f, indent=2)
+    
+    def print_stats(label, results_by_mode):
+        print(f"\n---- {label} ----")
+        for mode in ["lowrank", "fullrank"]:
+            res = results_by_mode[mode]
+            summaries = res["summaries"]
+            
+            masses = [s["mass"] for s in summaries]
+            stabs = [s["exact_mean"] for s in summaries]
+            purities = [s["purity"] for s in summaries if "purity" in s]
+            
+            corr_m, _ = spearmanr(masses, stabs)
+            corr_p = spearmanr(purities, stabs)[0] if purities else 0.0
+            
+            boundary_str = f"{res['boundary_exact_stability']:.4f}" if res['boundary_exact_stability'] is not None else "n/a (no boundary points)"
+            print(f"[{mode}]")
+            print(f"  mean_exact_stability: {res['mean_exact_stability']:.4f}")
+            print(f"  boundary_exact_stability: {boundary_str}")
+            print(f"  mass_stability_corr: {corr_m:.3f}")
+            print(f"  purity_stability_corr: {corr_p:.3f}")
+            print(f"  dist_stability_corr: {res['dist_stab_corr']:.3f}")
 
-    # Plotting (Basic check)
-    plt.figure(figsize=(10,6))
-    for i, mode in enumerate(["lowrank", "fullrank"]):
-        res = main_results[mode]["summaries"]
-        plt.scatter([s["mass"] for s in res], [s["exact_mean"] for s in res], label=mode, alpha=0.6)
-    plt.xscale('log')
-    plt.xlabel('Mass')
-    plt.ylabel('Exact Stability')
+    print_stats("TRAINED MODEL", trained_results)
+    print_stats("RANDOM MODEL", random_results)
+
+    # Visualization (Step 8)
+    plt.figure(figsize=(12, 5))
+    
+    # Trained Histogram
+    plt.subplot(1, 2, 1)
+    plt.hist(trained_results["lowrank"]["point_exact_stability"], bins=30, alpha=0.7, label="Trained (LowRank)")
+    plt.hist(random_results["lowrank"]["point_exact_stability"], bins=30, alpha=0.7, label="Random (LowRank)")
+    plt.title("Exact Stability Distribution (LowRank)")
+    plt.xlabel("Exact Stability")
+    plt.ylabel("Count")
     plt.legend()
-    plt.title('Mass vs Stability (Structural Check)')
-    plt.savefig('results/figures/mass_vs_stability_upgraded.png')
+    
+    # Mass vs Stability Comparison
+    plt.subplot(1, 2, 2)
+    t_sum = trained_results["lowrank"]["summaries"]
+    r_sum = random_results["lowrank"]["summaries"]
+    plt.scatter([s["mass"] for s in t_sum], [s["exact_mean"] for s in t_sum], label="Trained", alpha=0.5)
+    plt.scatter([s["mass"] for s in r_sum], [s["exact_mean"] for s in r_sum], label="Random", alpha=0.5)
+    plt.xscale('log')
+    plt.xlabel("Mass")
+    plt.ylabel("Mean Stability")
+    plt.title("Mass vs Stability Comparison")
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig('results/figures/stability_distribution_control.png')
+    print("\nSaved control visualization to results/figures/stability_distribution_control.png")
 
 if __name__ == "__main__":
     main()

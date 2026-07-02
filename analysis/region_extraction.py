@@ -26,10 +26,13 @@ def extract_regions(model, X, cell_ids=None, mass_threshold=1):
             # Compute purity if cell_ids are provided
             if cell_ids is not None:
                 region_cells = cell_ids[point_indices]
-                # Count occurrences of each cell_id
-                counts = torch.bincount(region_cells)
-                dominant_count = counts.max().item()
-                region_dict["purity"] = dominant_count / mass
+                # Drop unassigned points (-1) — bincount rejects negatives
+                region_cells = region_cells[region_cells >= 0]
+                if len(region_cells) > 0:
+                    counts = torch.bincount(region_cells)
+                    region_dict["purity"] = counts.max().item() / mass
+                else:
+                    region_dict["purity"] = 0.0
                 
             extracted_regions.append(region_dict)
             

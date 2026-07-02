@@ -28,9 +28,8 @@ def generate_perturbation_ensemble(base_model, ensemble_size=64, perturbation_co
     b0 = base_model.fc1.bias.data.clone()
     
     if family == "centroid_preserving" and data_centroid is None:
-        # If not provided, assume zero if needed, but better to raise or calculate
-        # For robustness, we will default to zero but log a warning if possible
-        data_centroid = torch.zeros(input_dim)
+        # Zero centroid would silently degenerate to weights_only (b_new = b0)
+        raise ValueError("family='centroid_preserving' requires data_centroid")
 
     for _ in range(ensemble_size):
         perturbed_model = copy.deepcopy(base_model)
@@ -70,6 +69,12 @@ def generate_perturbation_ensemble(base_model, ensemble_size=64, perturbation_co
             # b_new = b0 + (W0 - W_new) @ centroid
             # This preserves the signed offset w·c + b
             b_new = b0 + torch.mv((W0 - W_new), data_centroid)
+        elif family == "norm_preserving":
+            # Distance to origin is d = -b / ||w||. Keep d constant:
+            # b_new = b0 * (||W_new|| / ||W0||) — prevents "origin collapse"
+            norm_W0 = torch.norm(W0, dim=1) + 1e-12
+            norm_W_new = torch.norm(W_new, dim=1)
+            b_new = b0 * (norm_W_new / norm_W0)
         else:
             raise ValueError(f"Unknown family: {family}")
             

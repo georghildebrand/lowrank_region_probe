@@ -33,7 +33,7 @@ def compute_cell_stability_summaries(cells, point_exact_stab, point_ham_stab, bo
         if len(boundary_idx_in_cell) > 0:
             summary["exact_stability_boundaryband"] = point_exact_stab[boundary_idx_in_cell].mean().item()
         else:
-            summary["exact_stability_boundaryband"] = 1.0 # Or NaN? manual implies mean over band
+            summary["exact_stability_boundaryband"] = None # no boundary points in cell
             
         Summaries.append(summary)
         
