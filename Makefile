@@ -17,6 +17,9 @@ gmm:
 capacity-ratio:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_capacity_ratio
 
+region-identity:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_region_identity
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*
