@@ -18,15 +18,27 @@ Low-rank perturbations behave like **global deformation fields** on the ReLU pol
 - **Boundary Sensitivity**: $1 - \text{Stability}$.
 
 ## Running Experiments
-To run the main experiment probe:
-```bash
-make run
-```
 
-To clean previous results:
-```bash
-make clean
-```
+| Target | Experiment |
+|---|---|
+| `make run` | Original structural-cell probe (2D polytope) |
+| `make sweep` | Rank × scale × seed sweep, distance-conditioned lowrank vs fullrank |
+| `make label-shuffle` | Trained vs label-shuffled control (2D polytope) |
+| `make gmm` | 5D Gaussian-mixture replication |
+| `make capacity-ratio` | Geometry bonus vs hidden_dim/input_dim ratio |
+| `make region-identity` | Re-scoring with partition-level (region-identity) metric |
+| `make real-data` | MNIST / Fashion-MNIST, 3-layer MLP, layer-wise probe |
+| `make clean` | Remove previous results |
+
+Tests: `conda run -n plora python3 -m pytest tests/`
+
+## Results
+
+See **[FINDINGS.md](FINDINGS.md)**. Short version: the original hypothesis
+is not supported at scale — on real data and at depth, trained networks are
+*more* fragile under rank-1 perturbation than label-shuffled controls, and
+the effect is strictly rank-specific. The probe detects boundary
+commitment, not region robustness.
 
 ## Scope
-This repository explores **stability under weight perturbation**, not training dynamics. Stable regions under low-rank perturbations are candidates for **structural ReLU polytopes**.
+This repository explores **stability under weight perturbation**, not training dynamics.
