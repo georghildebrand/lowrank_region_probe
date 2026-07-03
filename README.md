@@ -31,6 +31,7 @@ Low-rank perturbations behave like **global deformation fields** on the ReLU pol
 | `make lora-prediction` | Probe fragility vs where LoRA fine-tune changes behavior |
 | `make directional-probe` | Probe in learned LoRA direction vs random rank-1 vs full-rank |
 | `make lora-sweep` | LoRA rank × steps sweep — does fragility signal strengthen as adapter converges? |
+| `make multilayer-lora` | All-layer LoRA fine-tune with per-layer ablation attribution |
 | `make clean` | Remove previous results |
 
 Tests: `conda run -n plora python3 -m pytest tests/`
