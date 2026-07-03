@@ -26,6 +26,12 @@ real-data:
 lora-prediction:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_lora_prediction
 
+directional-probe:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_directional_probe
+
+lora-sweep:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_lora_sweep
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*
