@@ -29,6 +29,8 @@ Low-rank perturbations behave like **global deformation fields** on the ReLU pol
 | `make region-identity` | Re-scoring with partition-level (region-identity) metric |
 | `make real-data` | MNIST / Fashion-MNIST, 3-layer MLP, layer-wise probe |
 | `make lora-prediction` | Probe fragility vs where LoRA fine-tune changes behavior |
+| `make directional-probe` | Probe in learned LoRA direction vs random rank-1 vs full-rank |
+| `make lora-sweep` | LoRA rank × steps sweep — does fragility signal strengthen as adapter converges? |
 | `make clean` | Remove previous results |
 
 Tests: `conda run -n plora python3 -m pytest tests/`
