@@ -36,3 +36,20 @@ def evaluate_layer_stability(model, X, layer, rank, scale, ensemble_size=64, min
         ri, _ = region_identity_from_hashes(base_hash, pert_hashes, min_mass=min_mass)
         out[f"ri_{suffix}"] = ri
     return out
+
+
+def evaluate_layer_stability_directional(model, X, layer, direction, scale,
+                                         ensemble_size=2):
+    """Gate stability under +/- perturbation along a fixed direction.
+    Returns {"dist", "hamming_dir"} — no region-identity (not needed downstream)."""
+    H, Z = model.layer_states(X)[layer]
+    W0, b0 = model.layer_weight(layer)
+    base_gates = Z > 0
+    centroid = H.mean(dim=0)
+    dist = min_hyperplane_distance(W0, b0, H).cpu().numpy()
+
+    W, b = generate_perturbation_batch(W0, b0, ensemble_size, 1, scale,
+                                       "directional", centroid, direction=direction)
+    gates = batched_gate_patterns(H, W, b)                       # [E, N, out]
+    matches = (gates == base_gates[None]).float().mean(dim=2)    # [E, N]
+    return {"dist": dist, "hamming_dir": matches.mean(dim=0).cpu().numpy()}

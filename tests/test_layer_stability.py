@@ -40,3 +40,29 @@ def test_layers_are_independent():
     W, b = m.layer_weight(1)
     expected_dist = (torch.abs(z) / (torch.norm(W, dim=1) + 1e-12)).min(dim=1)[0]
     assert np.allclose(res["dist"], expected_dist.numpy(), atol=1e-5)
+
+
+def test_directional_probe_keys_and_shapes():
+    from probes.layer_stability import evaluate_layer_stability_directional
+    torch.manual_seed(0)
+    model = DeepMLP(input_dim=16, hidden_dims=(8, 8, 4))
+    X = torch.randn(50, 16)
+    W0, _ = model.layer_weight(1)
+    D = torch.randn_like(W0)
+    out = evaluate_layer_stability_directional(model, X, layer=1,
+                                               direction=D, scale=0.1)
+    assert set(out) == {"dist", "hamming_dir"}
+    assert out["hamming_dir"].shape == (50,)
+    assert ((out["hamming_dir"] >= 0) & (out["hamming_dir"] <= 1)).all()
+
+
+def test_directional_probe_zero_scale_is_stable():
+    from probes.layer_stability import evaluate_layer_stability_directional
+    torch.manual_seed(0)
+    model = DeepMLP(input_dim=16, hidden_dims=(8, 8, 4))
+    X = torch.randn(50, 16)
+    W0, _ = model.layer_weight(0)
+    out = evaluate_layer_stability_directional(model, X, layer=0,
+                                               direction=torch.randn_like(W0),
+                                               scale=1e-8)
+    assert out["hamming_dir"].min() > 0.99

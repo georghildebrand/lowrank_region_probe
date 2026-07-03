@@ -75,3 +75,14 @@ def test_lora_delta_rank():
         assert actual_rank <= rank, (
             f"delta rank {actual_rank} > requested rank {rank}"
         )
+
+
+def test_dominant_direction_unit_norm_and_recovery():
+    from models.lora import dominant_direction
+    torch.manual_seed(0)
+    u = torch.randn(8, 1); v = torch.randn(1, 6)
+    delta = 3.7 * (u @ v)                     # exact rank-1
+    D = dominant_direction(delta)
+    assert abs(D.norm().item() - 1.0) < 1e-5
+    cos = torch.dot(D.flatten(), delta.flatten()) / delta.norm()
+    assert abs(abs(cos.item()) - 1.0) < 1e-5  # parallel up to sign

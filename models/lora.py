@@ -44,3 +44,9 @@ def lora_finetune(model, layer, X, y, rank=1, steps=300, lr=1e-2, batch=256, see
     with torch.no_grad():
         acc = ((forward_with_delta(model, X, layer, delta) > 0).float() == y).float().mean().item()
     return delta, acc
+
+
+def dominant_direction(delta):
+    """Top singular direction of delta as a unit-Frobenius [out,in] matrix."""
+    U, S, Vh = torch.linalg.svd(delta, full_matrices=False)
+    return U[:, :1] @ Vh[:1, :]
