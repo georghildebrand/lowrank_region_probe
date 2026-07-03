@@ -86,3 +86,45 @@ def test_dominant_direction_unit_norm_and_recovery():
     assert abs(D.norm().item() - 1.0) < 1e-5
     cos = torch.dot(D.flatten(), delta.flatten()) / delta.norm()
     assert abs(abs(cos.item()) - 1.0) < 1e-5  # parallel up to sign
+
+
+def test_forward_with_all_deltas_zeros_equals_model():
+    from models.lora import forward_with_all_deltas
+    model = _small_model()
+    x = torch.randn(10, 16)
+    W0, _ = model.layer_weight(0)
+    W1, _ = model.layer_weight(1)
+    deltas = {0: torch.zeros_like(W0), 1: torch.zeros_like(W1)}
+    out = forward_with_all_deltas(model, x, deltas)
+    assert torch.allclose(out, model(x), atol=1e-6)
+
+
+def test_forward_with_all_deltas_empty_equals_model():
+    from models.lora import forward_with_all_deltas
+    model = _small_model()
+    x = torch.randn(10, 16)
+    out = forward_with_all_deltas(model, x, {})
+    assert torch.allclose(out, model(x), atol=1e-6)
+
+
+def test_lora_finetune_multilayer_improves_accuracy():
+    from models.lora import lora_finetune_multilayer, forward_with_all_deltas
+    torch.manual_seed(7)
+    model = DeepMLP(input_dim=16, hidden_dims=(8, 8, 4))
+    X = torch.randn(400, 16)
+    y = (X[:, 0] > 0).float().unsqueeze(1)
+    deltas, ft_acc = lora_finetune_multilayer(model, layers=[0, 1, 2], X=X, y=y,
+                                               rank=1, steps=300, lr=5e-2, seed=0)
+    assert ft_acc > 0.7
+    assert set(deltas.keys()) == {0, 1, 2}
+
+
+def test_lora_finetune_multilayer_does_not_change_base_weights():
+    from models.lora import lora_finetune_multilayer
+    model = _small_model()
+    state_before = {k: v.clone() for k, v in model.state_dict().items()}
+    X = torch.randn(100, 16)
+    y = (X[:, 0] > 0).float().unsqueeze(1)
+    lora_finetune_multilayer(model, layers=[0, 1], X=X, y=y, rank=1, steps=50, seed=0)
+    for k, v_before in state_before.items():
+        assert torch.equal(model.state_dict()[k], v_before), f"weight {k} modified"

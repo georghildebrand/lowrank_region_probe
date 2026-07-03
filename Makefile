@@ -32,6 +32,9 @@ directional-probe:
 lora-sweep:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_lora_sweep
 
+multilayer-lora:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_multilayer_lora
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*
