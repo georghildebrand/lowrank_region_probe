@@ -3,11 +3,13 @@ Vectorized perturbation ensembles: one stacked tensor instead of E deepcopied
 models. ~10x faster eval at MNIST scale and MPS-friendly.
 Family is always centroid_preserving (the invariant used in all experiments):
 b_new = b0 + (W0 - W_new) @ centroid.
+mode='directional' replicates ±direction (ignoring rank), normalised to the same Frobenius norm.
 """
 import torch
 
 
-def generate_perturbation_batch(W0, b0, ensemble_size, rank, scale, mode, centroid):
+def generate_perturbation_batch(W0, b0, ensemble_size, rank, scale, mode, centroid,
+                                direction=None):
     out_dim, in_dim = W0.shape
     if mode == "lowrank":
         A = torch.randn(ensemble_size, rank, in_dim, device=W0.device)
@@ -15,8 +17,16 @@ def generate_perturbation_batch(W0, b0, ensemble_size, rank, scale, mode, centro
         P = torch.bmm(B, A)
     elif mode == "fullrank":
         P = torch.randn(ensemble_size, out_dim, in_dim, device=W0.device)
+    elif mode == "directional":
+        if direction is None:
+            raise ValueError("mode='directional' requires a direction matrix")
+        D = direction / direction.norm().clamp_min(1e-12)   # unit Frobenius
+        signs = torch.where(torch.arange(ensemble_size, device=W0.device) % 2 == 0,
+                            torch.ones(ensemble_size, device=W0.device),
+                            -torch.ones(ensemble_size, device=W0.device))
+        P = signs[:, None, None] * D[None]
     else:
-        raise ValueError(f"mode must be 'lowrank' or 'fullrank', got {mode}")
+        raise ValueError(f"mode must be 'lowrank', 'fullrank', or 'directional', got {mode}")
 
     norms = P.flatten(1).norm(dim=1).clamp_min(1e-12)
     P = P / norms[:, None, None] * (scale * W0.norm())
