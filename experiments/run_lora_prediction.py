@@ -5,13 +5,13 @@ where a LoRA fine-tune changes model behavior?
 Base task: mnist_even_odd; fine-tune task: mnist_lt5 (same X, new labels).
 """
 import torch
-import torch.nn as nn
 import numpy as np
 import json
 import os
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
+from experiments.common import train_model
 from models.deep_mlp import DeepMLP
 from models.lora import forward_with_delta, lora_finetune
 from datasets.image_binary import load_binary_dataset
@@ -29,29 +29,6 @@ HIDDEN_DIMS = (256, 128, 64)
 N_TRAIN = 20000
 N_EVAL = 10000
 ENSEMBLE = 64
-
-DEVICE = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-
-
-def train_model(model, X, y, max_epochs=60, target_acc=0.99, lr=1e-3, batch=256):
-    model = model.to(DEVICE)
-    X, y = X.to(DEVICE), y.to(DEVICE)
-    crit = nn.BCEWithLogitsLoss()
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
-    n = X.shape[0]
-    acc = 0.0
-    for epoch in range(max_epochs):
-        perm = torch.randperm(n, device=DEVICE)
-        for s in range(0, n, batch):
-            idx = perm[s:s + batch]
-            opt.zero_grad()
-            crit(model(X[idx]), y[idx]).backward()
-            opt.step()
-        with torch.no_grad():
-            acc = ((model(X) > 0).float() == y).float().mean().item()
-        if acc >= target_acc:
-            break
-    return model.cpu(), acc
 
 
 def main():
