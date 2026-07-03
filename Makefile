@@ -23,6 +23,9 @@ region-identity:
 real-data:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_real_data
 
+lora-prediction:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_lora_prediction
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*

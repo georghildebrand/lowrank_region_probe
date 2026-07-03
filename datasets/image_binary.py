@@ -16,6 +16,7 @@ DATA_ROOT = os.path.expanduser("~/.torch-datasets")
 
 SPLITS = {
     "mnist_even_odd": ("mnist", None),
+    "mnist_lt5": ("mnist", None),
     "fashion_easy": ("fashion", None),
     "fashion_hard": ("fashion", None),
 }
@@ -25,6 +26,8 @@ def _labels(split_name, raw_targets):
     t = np.asarray(raw_targets)
     if split_name == "mnist_even_odd":
         return (t % 2 == 0).astype(np.float32), np.ones(len(t), dtype=bool)
+    if split_name == "mnist_lt5":
+        return (t < 5).astype(np.float32), np.ones(len(t), dtype=bool)
     if split_name == "fashion_easy":
         return np.isin(t, [5, 7, 9]).astype(np.float32), np.ones(len(t), dtype=bool)
     if split_name == "fashion_hard":

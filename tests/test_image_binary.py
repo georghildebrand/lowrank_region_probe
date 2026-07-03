@@ -28,3 +28,11 @@ def test_seed_determinism():
     a = load_binary_dataset("mnist_even_odd", n_train=300, n_eval=100, seed=1)
     b = load_binary_dataset("mnist_even_odd", n_train=300, n_eval=100, seed=1)
     assert torch.equal(a[0], b[0]) and torch.equal(a[1], b[1])
+
+
+def test_mnist_lt5_x_alignment_with_even_odd():
+    """mnist_lt5 and mnist_even_odd share the same X at equal seed (only labels differ)."""
+    Xtr_a, _, Xev_a, _ = load_binary_dataset("mnist_even_odd", n_train=500, n_eval=200, seed=3)
+    Xtr_b, _, Xev_b, _ = load_binary_dataset("mnist_lt5",      n_train=500, n_eval=200, seed=3)
+    assert torch.equal(Xtr_a, Xtr_b), "Train X differs between mnist_even_odd and mnist_lt5"
+    assert torch.equal(Xev_a, Xev_b), "Eval X differs between mnist_even_odd and mnist_lt5"

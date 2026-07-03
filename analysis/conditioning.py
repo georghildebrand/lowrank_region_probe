@@ -35,3 +35,15 @@ def partial_spearman_mode_given_distance(s_a, s_b, dist):
     rho_ym = spearmanr(y, m)[0]
     rho_yd = spearmanr(y, d)[0]
     return rho_ym / np.sqrt(max(1.0 - rho_yd ** 2, 1e-9))
+
+
+def partial_spearman(x, y, z):
+    """General partial Spearman rho(x, y | z). NaNs dropped pairwise."""
+    x, y, z = (np.asarray(a, float) for a in (x, y, z))
+    valid = ~(np.isnan(x) | np.isnan(y) | np.isnan(z))
+    x, y, z = x[valid], y[valid], z[valid]
+    rho_xy = spearmanr(x, y)[0]
+    rho_xz = spearmanr(x, z)[0]
+    rho_yz = spearmanr(y, z)[0]
+    denom = np.sqrt(max((1 - rho_xz**2) * (1 - rho_yz**2), 1e-9))
+    return (rho_xy - rho_xz * rho_yz) / denom
