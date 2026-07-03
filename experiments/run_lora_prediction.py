@@ -110,6 +110,7 @@ def main():
             rho_full = spearmanr(frag_full, change)[0]
             rho_dist = spearmanr(-dist, change)[0]
             rho_low_given_dist = partial_spearman(frag_low, change, dist)
+            rho_full_given_dist = partial_spearman(frag_full, change, dist)
 
             row = {
                 "seed": seed, "layer": layer,
@@ -117,13 +118,14 @@ def main():
                 "rho_full": float(rho_full),
                 "rho_dist": float(rho_dist),
                 "rho_low_given_dist": float(rho_low_given_dist),
+                "rho_full_given_dist": float(rho_full_given_dist),
                 "ft_acc": float(ft_acc),
                 "base_acc": float(base_acc),
             }
             all_rows.append(row)
             print(f"  layer={layer}  rho_low={rho_low:+.3f}  rho_full={rho_full:+.3f}"
-                  f"  rho_dist={rho_dist:+.3f}  partial={rho_low_given_dist:+.3f}"
-                  f"  ft_acc={ft_acc:.3f}")
+                  f"  rho_dist={rho_dist:+.3f}  partial_low={rho_low_given_dist:+.3f}"
+                  f"  partial_full={rho_full_given_dist:+.3f}  ft_acc={ft_acc:.3f}")
 
     # Save results
     config = {
@@ -137,12 +139,13 @@ def main():
 
     # Figure: grouped bar per layer, 4 correlations
     fig, ax = plt.subplots(figsize=(10, 5))
-    metrics = ["rho_low", "rho_full", "rho_dist", "rho_low_given_dist"]
-    labels = ["rho(frag_r1)", "rho(frag_full)", "rho(-dist)", "partial rho(frag_r1|dist)"]
-    colors = ["#2196F3", "#FF9800", "#4CAF50", "#9C27B0"]
+    metrics = ["rho_low", "rho_full", "rho_dist", "rho_low_given_dist", "rho_full_given_dist"]
+    labels = ["rho(frag_r1)", "rho(frag_full)", "rho(-dist)",
+              "partial rho(frag_r1|dist)", "partial rho(frag_full|dist)"]
+    colors = ["#2196F3", "#FF9800", "#4CAF50", "#9C27B0", "#795548"]
     x = np.arange(len(LAYERS))
-    width = 0.18
-    offsets = np.linspace(-1.5 * width, 1.5 * width, 4)
+    width = 0.15
+    offsets = np.linspace(-2 * width, 2 * width, 5)
     for i, (metric, label, color) in enumerate(zip(metrics, labels, colors)):
         means, stds = [], []
         for layer in LAYERS:
@@ -164,14 +167,15 @@ def main():
     # Summary print
     print("\n==== LORA PREDICTION SUMMARY (mean over seeds) ====")
     print(f"{'layer':>5}  {'rho(frag_r1)':>13}  {'rho(frag_full)':>14}  "
-          f"{'rho(-dist)':>10}  {'partial rho(frag_r1|dist)':>25}  {'ft_acc':>6}")
+          f"{'rho(-dist)':>10}  {'partial r1|dist':>15}  {'partial full|dist':>17}  {'ft_acc':>6}")
     for layer in LAYERS:
         rows = [r for r in all_rows if r["layer"] == layer]
         print(f"{layer:>5}  "
               f"{np.mean([r['rho_low'] for r in rows]):>+13.3f}  "
               f"{np.mean([r['rho_full'] for r in rows]):>+14.3f}  "
               f"{np.mean([r['rho_dist'] for r in rows]):>+10.3f}  "
-              f"{np.mean([r['rho_low_given_dist'] for r in rows]):>+25.3f}  "
+              f"{np.mean([r['rho_low_given_dist'] for r in rows]):>+15.3f}  "
+              f"{np.mean([r['rho_full_given_dist'] for r in rows]):>+17.3f}  "
               f"{np.mean([r['ft_acc'] for r in rows]):>6.3f}")
     print("\nSaved results/logs/lora_prediction_results.json + figure.")
 

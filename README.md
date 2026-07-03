@@ -28,6 +28,7 @@ Low-rank perturbations behave like **global deformation fields** on the ReLU pol
 | `make capacity-ratio` | Geometry bonus vs hidden_dim/input_dim ratio |
 | `make region-identity` | Re-scoring with partition-level (region-identity) metric |
 | `make real-data` | MNIST / Fashion-MNIST, 3-layer MLP, layer-wise probe |
+| `make lora-prediction` | Probe fragility vs where LoRA fine-tune changes behavior |
 | `make clean` | Remove previous results |
 
 Tests: `conda run -n plora python3 -m pytest tests/`

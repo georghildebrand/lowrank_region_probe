@@ -1,6 +1,6 @@
 # Findings
 
-Five experiments testing the hypothesis: *stable ReLU gate regions under
+Six experiments testing the hypothesis: *stable ReLU gate regions under
 low-rank weight perturbations correspond to structural partitions learned
 from data.*
 
@@ -99,9 +99,42 @@ Geometry bonus (trained − shuffled partial ρ), rank=1:
 Rank-8 control ≈ 0 everywhere. Trained acc ≥ 0.99, shuffled memorization
 acc ≈ 0.90.
 
+## Experiment 6 — LoRA prediction (MNIST, layer-wise)
+
+`make lora-prediction` — base model trained on even/odd; each layer LoRA
+fine-tuned (rank-1, frozen base, 300 steps) onto digit<5 with the *same*
+inputs; per-point |Δlogit| on eval correlated with probe fragility.
+3 seeds × 3 layers.
+
+Mean over seeds:
+
+| layer | ρ(frag_r1) | ρ(frag_full) | ρ(−dist) | partial ρ(r1\|dist) | partial ρ(full\|dist) | ft_acc |
+|---|---|---|---|---|---|---|
+| 0 | −0.106 | −0.115 | −0.041 | −0.100 | −0.108 | 0.884 |
+| 1 | +0.011 | +0.028 | −0.028 | +0.044 | +0.061 | 0.761 |
+| 2 | −0.420 | −0.393 | −0.559 | **+0.190** | **+0.223** | 0.615 |
+
+Two results:
+
+1. **Fragility-given-distance does predict fine-tune susceptibility at the
+   deep layer.** Raw correlations at layer 2 are dominated by a distance
+   confound with the *opposite* sign — far-from-boundary points carry large
+   logits and LoRA shifts them most (ρ(−dist)=−0.559). Conditioned on
+   distance, fragile points change *more*, positive in all 3 seeds
+   (+0.260/+0.176/+0.133).
+2. **But the prediction is NOT rank-1-specific.** The full-rank probe's
+   partial correlation is as large or larger (+0.223 vs +0.190, every
+   seed). Generic gate fragility at matched distance predicts where LoRA
+   moves the model; the perturbation *structure* adds nothing predictive.
+
+Caveats: rank-1 LoRA on this relabeling is weak at depth (layer-2 ft_acc
+0.49–0.84, seed-dependent), so layer-2 |Δlogit| partly reflects an
+under-trained adapter; layers 0–1 fine-tune better yet show no fragility
+signal at all.
+
 ## Interpretation
 
-One mechanism explains all five experiments:
+One mechanism explains all five perturbation experiments:
 
 1. **The probe is real**: every effect — positive or negative — is specific
    to rank-1 perturbations and vanishes by rank 8 at matched norm. Gate
@@ -117,11 +150,22 @@ One mechanism explains all five experiments:
    signature of learned structure in realistic settings. Deep layers of
    trained networks are maximally rank-1-sensitive — consistent with why
    low-rank adapters (LoRA-style) steer trained networks so effectively.
+4. **The LoRA connection is real but not structural** (Experiment 6):
+   distance-conditioned gate fragility at the deep layer does predict
+   which points a LoRA fine-tune moves — but the full-rank probe predicts
+   just as well. The probe's rank-1 specificity governs *how much* gates
+   flip (Experiments 1–5), not *which* points a low-rank update will
+   later move. Fragility is a pointwise susceptibility marker, not a
+   fingerprint of the low-rank update subspace.
 
 ## Open follow-ups
 
-- Probe fragility as a *predictor* of where low-rank fine-tuning changes
-  behavior (the LoRA connection, the most promising direction).
+- Experiment 6 used a rank-1 adapter that under-fits at depth
+  (ft_acc ≈ 0.6 at layer 2); repeat with rank 4–8 adapters or more steps
+  so |Δlogit| reflects a converged fine-tune.
+- Directional variant: correlate fragility measured *in the learned LoRA
+  direction* (ΔW/‖ΔW‖ as the probe direction, not random B@A) — random
+  rank-1 probes may simply be too isotropic to carry subspace information.
 - "Polytopeness" gradient: interpolate ground-truth boundary softness and
   show the bonus decays continuously.
 - Region-identity metric at layers 0–1 on real data is starved by
