@@ -86,17 +86,15 @@ def main():
     for seed in SEEDS:
         for softness in SOFTNESS_LEVELS:
             i += 1
-            np.random.seed(seed)
-            torch.manual_seed(seed)
             X, y, _ = generate_soft_checkerboard(n_samples=N_SAMPLES,
                                                  softness=softness, seed=seed)
 
-            m_trained = MLP(input_dim=INPUT_DIM, hidden_dim=HIDDEN_DIM)
             torch.manual_seed(seed)
+            m_trained = MLP(input_dim=INPUT_DIM, hidden_dim=HIDDEN_DIM)
             train_model(m_trained, X, y, TRAIN_STEPS)
 
-            m_shuffled = MLP(input_dim=INPUT_DIM, hidden_dim=HIDDEN_DIM)
             torch.manual_seed(seed)  # identical init
+            m_shuffled = MLP(input_dim=INPUT_DIM, hidden_dim=HIDDEN_DIM)
             _, y_shuffled = get_label_shuffle_data(X, y)
             train_model(m_shuffled, X, y_shuffled, TRAIN_STEPS)
 
