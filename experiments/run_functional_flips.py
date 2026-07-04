@@ -2,14 +2,24 @@
 """
 Function-weighted gate flips: are trained networks' gate flips benign?
 
-Prior experiments count gate flips (Hamming). But a flip is only harmful if
-it changes the function. Here both metrics come from the SAME perturbation
-ensemble per point: Hamming gate stability AND functional stability
-(-mean |Δlogit|). Trained vs label-shuffled, rank-1 lowrank vs fullrank,
-on 2D checkerboard (Hamming bonus was positive) and 5D GMM (Hamming bonus
-was ~0/negative). Rescue prediction: functional geometry bonus positive on
-GMM even where Hamming bonus is not, and trained flips carry less |Δlogit|
-per flip than shuffled flips.
+Prior experiments (Exp 3/4/10) used exact full-pattern-match stability
+(compute_point_exact_stability) for geometry bonuses — NOT per-gate Hamming.
+Exp 11 (this file) uses per-gate Hamming stability, so bonus numbers here
+are NOT directly comparable to Exp 3/10 bonus numbers.
+
+Both metrics come from the SAME perturbation ensemble per point: Hamming gate
+stability AND functional stability (-mean |Δlogit|). Trained vs label-shuffled,
+rank-1 lowrank vs fullrank, on 2D checkerboard (Hamming bonus was positive) and
+5D GMM (Hamming bonus was ~0/negative). Rescue prediction: functional geometry
+bonus positive on GMM even where Hamming bonus is not, and trained flips carry
+less flip-attributable |Δlogit| per flip than shuffled flips.
+
+`per_flip_impact` is the flip-attributable EXCESS |Δlogit| per flip: for each
+point the mean |Δlogit| among ensemble members that DID flip is reduced by the
+mean |Δlogit| among members that did NOT flip (the smooth within-region
+baseline), then divided by the mean flip count among flipped members. This
+removes the smooth within-region component that moves even with zero gate
+flips, giving an unconfounded per-flip attribution.
 """
 import torch
 import torch.nn as nn
@@ -100,14 +110,23 @@ def eval_model(model, X, scale):
         func_stab = (-dlogit.mean(dim=0)).cpu().numpy()
 
         flipped = flips > 0
-        per_flip = (dlogit[flipped] / flips[flipped])
-        per_flip_impact = float(per_flip.mean()) if flipped.any() else float("nan")
+        # Flip-attributable excess: |Δlogit| among flipped members minus the
+        # smooth (no-flip) |Δlogit| at the same point, per flip. Removes the
+        # within-region component that also moves when W changes.
+        n_flip = flipped.float().sum(dim=0)                       # [N]
+        n_noflip = (~flipped).float().sum(dim=0)                  # [N]
+        dl_flip = (dlogit * flipped.float()).sum(dim=0) / n_flip.clamp_min(1)
+        dl_noflip = (dlogit * (~flipped).float()).sum(dim=0) / n_noflip.clamp_min(1)
+        flips_when_flipped = (flips * flipped.float()).sum(dim=0) / n_flip.clamp_min(1)
+        valid = (n_flip > 0) & (n_noflip > 0)
+        per_flip_excess = ((dl_flip - dl_noflip) / flips_when_flipped.clamp_min(1e-12))[valid]
+        per_flip_impact = float(per_flip_excess.mean()) if valid.any() else float("nan")
 
         out[mode] = {
             "hamming_stab": hamming_stab,
             "func_stab": func_stab,
             "per_flip_impact": per_flip_impact,
-            "flip_rate": float(flips.mean()),
+            "mean_flips": float(flips.mean()),
         }
     return out
 
@@ -151,8 +170,8 @@ def main():
                 for mode in ["lowrank", "fullrank"]:
                     row[f"per_flip_trained_{mode}"] = r_t[mode]["per_flip_impact"]
                     row[f"per_flip_shuffled_{mode}"] = r_s[mode]["per_flip_impact"]
-                    row[f"flip_rate_trained_{mode}"] = r_t[mode]["flip_rate"]
-                    row[f"flip_rate_shuffled_{mode}"] = r_s[mode]["flip_rate"]
+                    row[f"mean_flips_trained_{mode}"] = r_t[mode]["mean_flips"]
+                    row[f"mean_flips_shuffled_{mode}"] = r_s[mode]["mean_flips"]
                 all_results.append(row)
                 print(f"    scale={scale}  bonus_hamming={row['bonus_hamming']:+.3f}  "
                       f"bonus_functional={row['bonus_functional']:+.3f}  "
