@@ -35,6 +35,9 @@ lora-sweep:
 multilayer-lora:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_multilayer_lora
 
+polytopeness:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_polytopeness
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*
