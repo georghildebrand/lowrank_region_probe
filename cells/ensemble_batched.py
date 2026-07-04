@@ -43,3 +43,18 @@ def batched_gate_patterns(X, W, b, chunk=16):
         z = torch.einsum("ni,eoi->eno", X, We) + be[:, None, :]
         outs.append(z > 0)
     return torch.cat(outs, dim=0)
+
+
+def batched_logits(X, W, b, W2, b2, chunk=16):
+    """Logits of a single-hidden-layer MLP under E perturbed first layers.
+
+    X:[N,d], W:[E,h,d], b:[E,h], W2:[1,h] (fc2.weight), b2:[1] (fc2.bias).
+    Returns [E,N].
+    """
+    outs = []
+    for start in range(0, W.shape[0], chunk):
+        We, be = W[start:start + chunk], b[start:start + chunk]
+        z = torch.einsum("ni,eoi->eno", X, We) + be[:, None, :]
+        h = torch.relu(z)
+        outs.append(torch.einsum("eno,o->en", h, W2[0]) + b2[0])
+    return torch.cat(outs, dim=0)

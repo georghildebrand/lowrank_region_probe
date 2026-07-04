@@ -95,3 +95,29 @@ def test_directional_requires_direction():
     import pytest
     with pytest.raises(ValueError):
         generate_perturbation_batch(W0, b0, 2, 1, 0.1, "directional", c)
+
+
+def test_batched_logits_matches_loop():
+    import copy
+    from models.mlp import MLP
+    from cells.ensemble_batched import generate_perturbation_batch, batched_logits
+
+    torch.manual_seed(0)
+    model = MLP(input_dim=4, hidden_dim=8)
+    X = torch.randn(30, 4)
+    W0, b0 = model.fc1.weight.data, model.fc1.bias.data
+    centroid = X.mean(dim=0)
+
+    W, b = generate_perturbation_batch(W0, b0, ensemble_size=5, rank=1,
+                                       scale=0.1, mode="lowrank", centroid=centroid)
+    logits = batched_logits(X, W, b, model.fc2.weight.data, model.fc2.bias.data,
+                            chunk=2)
+    assert logits.shape == (5, 30)
+
+    for e in range(5):
+        m = copy.deepcopy(model)
+        with torch.no_grad():
+            m.fc1.weight.copy_(W[e])
+            m.fc1.bias.copy_(b[e])
+            expected = m(X).squeeze(1)
+        assert torch.allclose(logits[e], expected, atol=1e-5)
