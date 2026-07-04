@@ -38,6 +38,9 @@ multilayer-lora:
 polytopeness:
 	conda run -n $(ENV_NAME) python3 -m experiments.run_polytopeness
 
+functional-flips:
+	conda run -n $(ENV_NAME) python3 -m experiments.run_functional_flips
+
 clean:
 	rm -rf results/logs/*
 	rm -rf results/figures/*
