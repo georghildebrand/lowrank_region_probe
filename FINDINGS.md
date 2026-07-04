@@ -1,6 +1,6 @@
 # Findings
 
-Nine experiments testing the hypothesis: *stable ReLU gate regions under
+Eleven experiments testing the hypothesis: *stable ReLU gate regions under
 low-rank weight perturbations correspond to structural partitions learned
 from data.*
 
@@ -225,6 +225,75 @@ relevant points, the spurious signal vanishes. This confirms: the Exp 6
 positive signal was a partial-convergence artifact from the stuck layer-2
 adapter, not a structural LoRA connection.
 
+## Experiment 10 — Polytopeness gradient
+
+`make polytopeness` — Exp 3 (label-shuffle) design repeated across a
+boundary-softness gradient on the 2D checkerboard. New dataset
+`generate_soft_checkerboard(softness)`: labels drawn
+`y ~ Bernoulli(sigmoid(signed_margin / softness))`, so softness=0 is the
+hard checkerboard and larger values blur the quadrant boundaries.
+3 seeds × 5 softness levels × 3 scales; geometry bonus = trained −
+shuffled partial ρ, identical-init control.
+
+(Methods note: this experiment seeds `torch.manual_seed(seed)` directly
+before EACH model construction, making the identical-init control exact.
+The original `run_label_shuffle.py`/`run_gmm.py` seed after construction,
+so their shuffled models actually had different inits — that does not
+invalidate the Exp 3/4 control (any-converged-geometry comparison), but
+the "identical init" description was only aspirational there.)
+
+Mean over seeds and scales:
+
+| softness | geometry bonus | acc_trained |
+|---|---|---|
+| 0.0 | **+0.119** | 1.000 |
+| 0.05 | −0.072 | 0.936 |
+| 0.1 | −0.037 | 0.879 |
+| 0.2 | −0.045 | 0.789 |
+| 0.4 | −0.059 | 0.683 |
+
+**Result: a cliff, not a gradient.** The prediction was continuous decay;
+instead the bonus exists only at exactly softness=0 and collapses to a
+small *negative* value at the first nonzero softness, staying flat
+thereafter. The rank-1 geometry bonus is not proportional to "how
+polytope-like" the data is — it requires an exactly-hard piecewise
+partition. The moment the optimal decision boundary has any soft margin,
+the trained network's geometry behaves like the soft-boundary regimes
+(GMM, images): slightly more fragile than the shuffled control.
+
+## Experiment 11 — Function-weighted gate flips
+
+`make functional-flips` — per point, TWO stability metrics from the SAME
+rank-1/full-rank perturbation ensemble: per-gate Hamming stability, and
+functional stability (−mean |Δlogit|). Trained vs identical-init
+label-shuffled, on 2D checkerboard and 5D GMM. Rescue prediction: trained
+networks' gate flips are benign — fragile in Hamming, robust in function.
+(Metric note: bonuses here use per-gate Hamming, not the exact-pattern
+metric of Exp 3/10 — numbers are not directly comparable across
+experiments.)
+
+Mean over 3 seeds × 2 scales:
+
+| dataset | bonus (Hamming) | bonus (functional) | per-flip excess trained | per-flip excess shuffled | mean flips t/s |
+|---|---|---|---|---|---|
+| checkerboard2d | +0.003 | −0.010 | **0.758** | 0.061 | 2.05 / 0.81 |
+| gmm5d | +0.002 | +0.044 | 0.225 | 0.155 | 3.06 / 2.15 |
+
+`per-flip excess` = flip-attributable |Δlogit| per flipped gate, with the
+smooth no-flip |Δlogit| baseline at the same point subtracted (the naive
+|Δlogit|/flips estimator is confounded by the within-region component and
+was replaced after review).
+
+**Result: the rescue fails, inverted.** The functional geometry bonus is
+noise on both datasets (signs inconsistent across seeds). And the
+benign-flip prediction is contradicted outright: on the checkerboard,
+trained networks' flips carry **~12× more** function change per flip than
+shuffled controls (0.758 vs 0.061, trained > shuffled in 6/6 cells), and
+trained networks also flip *more* gates on average (2.05 vs 0.81). GMM
+shows the same direction more weakly (4/6 cells). Trained gate flips are
+functionally *loaded*, not benign: training concentrates the function on
+exactly the gates the probe flips.
+
 ## Interpretation
 
 One mechanism explains all six LoRA experiments:
@@ -261,14 +330,32 @@ One mechanism explains all six LoRA experiments:
    gate fragility carries no information about which layer a converged
    fine-tuning adapter uses to reshape the logit surface. The LoRA connection
    hypothesis is fully refuted.
+7. **The geometry bonus is a threshold effect, not a gradient** (Exp 10).
+   The positive bonus requires an exactly-hard piecewise partition; the
+   smallest boundary softness (0.05) kills it entirely and flips its sign.
+   There is no continuum from "polytope data" to "soft data" — the original
+   hypothesis holds on a measure-zero corner of data space.
+8. **Gate flips in trained networks are functionally loaded** (Exp 11).
+   The last rescue path — trained networks fragile in Hamming but robust in
+   function — is inverted: per flipped gate, trained networks change their
+   output ~12× more than shuffled controls on the checkerboard. Training
+   does not build redundancy around its gates; it concentrates function ON
+   them. This is the same boundary-commitment mechanism seen from a third
+   angle: committed gates are few, load-bearing, and rank-1-reachable.
 
 ## Open follow-ups
 
 - The negative directional-probe effect (Exp 7) is a new phenomenon worth
   isolating: is it specific to gradient-descent LoRA, or does any rank-1
   update to a trained network preferentially avoid fragile-point gate flips?
-- "Polytopeness" gradient: interpolate ground-truth boundary softness and
-  show the bonus decays continuously.
+- The softness cliff (Exp 10) deserves a finer sweep between 0 and 0.05 to
+  locate the transition — is it sharp in softness, or does it track the
+  probe scale (bonus dies when label noise width exceeds the perturbation's
+  boundary displacement)?
+- Per-flip functional loading (Exp 11) suggests a positive-framing follow-up:
+  committed gates as a *sparse function skeleton* — can the top-k
+  highest-per-flip-impact gates alone reconstruct most of the decision
+  surface?
 - Region-identity metric at layers 0–1 on real data is starved by
   `min_mass` filtering (256/128 gates → few cells with ≥10 members);
   needs a coarser cell definition (e.g. top-k active gates) to be

@@ -32,6 +32,8 @@ Low-rank perturbations behave like **global deformation fields** on the ReLU pol
 | `make directional-probe` | Probe in learned LoRA direction vs random rank-1 vs full-rank |
 | `make lora-sweep` | LoRA rank × steps sweep — does fragility signal strengthen as adapter converges? |
 | `make multilayer-lora` | All-layer LoRA fine-tune with per-layer ablation attribution |
+| `make polytopeness` | Geometry bonus vs ground-truth boundary softness (soft checkerboard) |
+| `make functional-flips` | Hamming vs functional (\|Δlogit\|) stability from the same ensemble |
 | `make clean` | Remove previous results |
 
 Tests: `conda run -n plora python3 -m pytest tests/`
@@ -42,7 +44,10 @@ See **[FINDINGS.md](FINDINGS.md)**. Short version: the original hypothesis
 is not supported at scale — on real data and at depth, trained networks are
 *more* fragile under rank-1 perturbation than label-shuffled controls, and
 the effect is strictly rank-specific. The probe detects boundary
-commitment, not region robustness.
+commitment, not region robustness. Two rescue attempts also failed: the
+geometry bonus requires an exactly-hard partition (a cliff at softness=0,
+not a gradient), and trained networks' gate flips carry ~12× more function
+change per flip than controls — flips are loaded, not benign.
 
 ## Scope
 This repository explores **stability under weight perturbation**, not training dynamics.
